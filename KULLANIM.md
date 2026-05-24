@@ -1,6 +1,24 @@
 # Kullanım Kılavuzu — Time Cycle Analizi
 
-## Hızlı başlangıç (lokal makinen)
+İki kullanım yolu var:
+
+| Yol | Ne için iyi | Setup |
+|---|---|---|
+| **TradingView İndikatörü** (`pine/`) | Bybit/Binance verisini doğrudan TV'de canlı görmek, anında parametre denemek, geo-blok yok | Tek tık — Pine Editor'a yapıştır |
+| **Python + Streamlit** (bu proje) | Çoklu sembol tarama, backtest, otomasyon, alarm | Lokalde `pip install` + `streamlit run` |
+
+## TradingView (önerilen — en hızlı yol)
+
+Detaylı: [`pine/README.md`](pine/README.md)
+
+Kısa özet:
+1. TradingView'da `BYBIT:BTCUSDT` (veya istediğin sembol) aç, TF seç (`1D`, `4H` vb.)
+2. Alt panel → **Pine Editor**
+3. `pine/time_cycles.pine` içeriğini kopyala-yapıştır → **Save** → **Add to chart**
+4. ⚙ Settings → iki dip tarihini gir (örn. son macro dip ve önceki büyük dip)
+5. Otomatik en iyi bölme + 5/10/15% dart-board pencereleri + yarım daire döngüler çizilir
+
+## Hızlı başlangıç (lokal makinen — Python tarafı)
 
 ```bash
 # 1) Repoyu çek (designated branch)

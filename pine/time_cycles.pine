@@ -1,0 +1,340 @@
+//@version=6
+// =============================================================================
+// Time Cycles — Hurst / Mr. Abundance
+// Yöntem: Beginner's Guide to Time Cycles (Mr. Abundance)
+//
+// İki seed dip seç → parent döngü = arasındaki gün sayısı
+// Subdivision (1/2/3/4/...) ile alt döngü = parent / N
+// Otomatik mod: aday bölmeler için hit-rate hesaplanır, en yüksek olan seçilir
+// Her projeksiyon pivotu etrafında 3 katmanlı dart-board penceresi (5/10/15%)
+// İsteğe bağlı yarım daire döngü görseli (alt panel yok, fiyat üstüne curved polyline)
+//
+// Kullanım:
+//   1) Grafiği aç (örn. BYBIT:BTCUSDT, TF: 1D)
+//   2) Pine Editor'a yapıştır → Save → Add to chart
+//   3) Settings → iki dip tarihini gir (veya "Otomatik en iyi" seçili tut)
+// =============================================================================
+
+indicator("Time Cycles — Hurst / Mr. Abundance",
+     overlay = true,
+     max_lines_count   = 500,
+     max_boxes_count   = 500,
+     max_labels_count  = 500,
+     max_polylines_count = 100)
+
+// ============ INPUTS ============
+
+g_seed = "1️⃣  Seed Pivot Dipleri"
+seed_a_t = input.time(timestamp("2022-11-21T00:00"), "Dip A (sol)",  group=g_seed,
+     tooltip="Sol taraftaki büyük dip. Grafikte sağ tıkla → date/time pick.")
+seed_b_t = input.time(timestamp("2024-08-05T00:00"), "Dip B (sağ)",  group=g_seed,
+     tooltip="Sağ taraftaki büyük dip. Parent döngü = B − A.")
+
+g_cyc = "2️⃣  Döngü Ayarları"
+auto_sub        = input.bool(true, "Otomatik en iyi bölmeyi seç",     group=g_cyc)
+candidates_str  = input.string("1,2,3,4,5", "Aday bölmeler (virgülle)",group=g_cyc,
+     tooltip="Sadece otomatik modda aktif. En yüksek hit-rate seçilir.")
+manual_sub      = input.int(2, "Manuel bölme oranı (auto kapalıysa)",
+                              minval=1, maxval=12, group=g_cyc)
+tol_pct         = input.float(10.0, "Tolerans penceresi (%)",
+                                minval=1, maxval=25, step=0.5, group=g_cyc) / 100.0
+project_future_n= input.int(8, "İleri projeksiyon (alt döngü sayısı)",
+                              minval=1, maxval=50, group=g_cyc)
+
+g_piv = "3️⃣  Pivot Tespiti"
+pivot_left  = input.int(10, "Pivot left (bar)",  minval=1, maxval=200, group=g_piv)
+pivot_right = input.int(10, "Pivot right (bar)", minval=1, maxval=200, group=g_piv,
+     tooltip="Daha büyük = daha az ama daha güvenilir pivot.")
+show_pivots = input.bool(true, "Anlamlı dipleri işaretle",  group=g_piv)
+
+g_viz = "4️⃣  Görsel"
+col_main       = input.color(color.new(#f5b400, 0),  "Ana renk (en iyi döngü)",  group=g_viz)
+col_alt        = input.color(color.new(#8c4a8c, 0),  "Alt renk (2. en iyi)",     group=g_viz)
+show_second    = input.bool(true, "2. en iyi bölmeyi de göster",                 group=g_viz)
+show_windows   = input.bool(true, "Tolerans pencereleri (5/10/15%)",             group=g_viz)
+show_pivlines  = input.bool(true, "Pivot dikey çizgileri",                       group=g_viz)
+show_labels    = input.bool(true, "Etiket (alt döngü, hit-rate, sıradaki pivot)",group=g_viz)
+show_arcs      = input.bool(true, "Yarım daire döngü eğrileri",                  group=g_viz)
+arc_height_pct = input.float(8.0, "Yarım daire yüksekliği (% fiyat)",
+                              minval=1, maxval=30, group=g_viz) / 100.0
+
+// ============ STATE: BİRİKEN PİVOTLAR ============
+
+var array<int>   piv_t = array.new<int>()    // pivot zamanları (ms)
+var array<float> piv_p = array.new<float>()  // pivot fiyatları
+var array<int>   piv_b = array.new<int>()    // pivot bar_index
+
+// Pivot low tespiti (gerçek pivot bar `pivot_right` bar geride)
+pl = ta.pivotlow(low, pivot_left, pivot_right)
+if not na(pl)
+    array.push(piv_t, time[pivot_right])
+    array.push(piv_p, pl)
+    array.push(piv_b, bar_index - pivot_right)
+
+// Chart-wide max/min — her barda güncellenir, çizim sırasında kullanılır
+var float chart_high = na
+var float chart_low  = na
+chart_high := na(chart_high) ? high : math.max(chart_high, high)
+chart_low  := na(chart_low)  ? low  : math.min(chart_low,  low)
+
+// ============ ÇİZİM NESNELERİ (yeniden çizim için) ============
+
+var array<line>     lns  = array.new<line>()
+var array<box>      bxs  = array.new<box>()
+var array<label>    lbs  = array.new<label>()
+var array<polyline> pls  = array.new<polyline>()
+var array<label>    pmks = array.new<label>()   // pivot işaretleri
+
+clear_all() =>
+    for ln in lns
+        line.delete(ln)
+    array.clear(lns)
+    for bx in bxs
+        box.delete(bx)
+    array.clear(bxs)
+    for lb in lbs
+        label.delete(lb)
+    array.clear(lbs)
+    for pl_ in pls
+        polyline.delete(pl_)
+    array.clear(pls)
+    for pm in pmks
+        label.delete(pm)
+    array.clear(pmks)
+
+// ============ HELPER: aday liste parse ============
+
+parse_candidates(s) =>
+    out = array.new<int>()
+    parts = str.split(s, ",")
+    for p in parts
+        v = str.tonumber(str.replace_all(p, " ", ""))
+        if not na(v) and v >= 1
+            array.push(out, int(v))
+    out
+
+// ============ HELPER: hit-rate skoru ============
+// Verilen subdivision için, sub_ms aralıklı projeksiyon pivotları üret,
+// her birine ±tol_ms içinde gerçek pivot var mı say.
+
+score_subdivision(int sub, int seed_a_ms, int parent_ms,
+                    int start_ms, int end_ms,
+                    array<int> actuals, float tp) =>
+    sub_ms  = parent_ms / sub
+    tol_ms  = math.round(sub_ms * tp)
+    hits    = 0
+    total   = 0
+    max_iter = 400   // güvenlik: çok küçük sub_ms patlamasın
+    if sub_ms < 86400000   // < 1 gün → anlamsız
+        [0, 0, sub_ms]
+    else
+        used    = array.new<bool>(array.size(actuals), false)
+        // geri
+        t = seed_a_ms
+        iters = 0
+        while t >= start_ms and iters < max_iter
+            total += 1
+            best_i = -1
+            best_d = tol_ms + 1
+            for i = 0 to array.size(actuals) - 1
+                if not array.get(used, i)
+                    d = math.abs(array.get(actuals, i) - t)
+                    if d <= tol_ms and d < best_d
+                        best_d := d
+                        best_i := i
+            if best_i >= 0
+                hits += 1
+                array.set(used, best_i, true)
+            t -= sub_ms
+            iters += 1
+        // ileri
+        t := seed_a_ms + sub_ms
+        iters := 0
+        while t <= end_ms and iters < max_iter
+            total += 1
+            best_i = -1
+            best_d = tol_ms + 1
+            for i = 0 to array.size(actuals) - 1
+                if not array.get(used, i)
+                    d = math.abs(array.get(actuals, i) - t)
+                    if d <= tol_ms and d < best_d
+                        best_d := d
+                        best_i := i
+            if best_i >= 0
+                hits += 1
+                array.set(used, best_i, true)
+            t += sub_ms
+            iters += 1
+        [hits, total, sub_ms]
+
+// ============ HELPER: yarım daire (curved polyline) ============
+// Center zaman, yarıçap ms cinsinden, yükseklik fiyat cinsinden.
+
+draw_arc(int center_t, int radius_ms, float baseline, float height, color c) =>
+    pts = array.new<chart.point>()
+    n   = 30
+    for i = 0 to n
+        // θ ∈ [π, 0]  →  üst yarım daire
+        theta = math.pi - (math.pi * i / n)
+        x_ms  = center_t + math.round(radius_ms * math.cos(theta))
+        y_v   = baseline + height * math.sin(theta)
+        array.push(pts, chart.point.from_time(x_ms, y_v))
+    pln = polyline.new(pts, line_color=c, line_width=1, curved=true, closed=false,
+                        xloc=xloc.bar_time)
+    array.push(pls, pln)
+
+// ============ HELPER: bir döngüyü çiz ============
+
+draw_cycle(int seed_a_ms, int parent_ms, int sub,
+            int chart_start_ms, int chart_end_ms,
+            color c, float tp, int hits, int total,
+            float price_max, float price_min, bool draw_label_top) =>
+    sub_ms     = parent_ms / sub
+    tol_ms     = math.round(sub_ms * tp)
+    sub_days   = sub_ms / 86400000.0
+    hit_rate   = total > 0 ? hits / total : 0.0
+    radius_ms  = sub_ms / 2
+    arc_h      = (price_max - price_min) * arc_height_pct
+    baseline   = price_min
+
+    // Tüm projeksiyon pivotlarını topla
+    proj = array.new<int>()
+    t = seed_a_ms
+    horizon_end = chart_end_ms + sub_ms * project_future_n
+    while t >= chart_start_ms
+        array.push(proj, t)
+        t -= sub_ms
+    t := seed_a_ms + sub_ms
+    while t <= horizon_end
+        array.push(proj, t)
+        t += sub_ms
+
+    for piv_ms in proj
+        // pencereler (15/10/5 % — dış→iç, iç en koyu)
+        if show_windows
+            w15 = math.round(sub_ms * 0.15)
+            w10 = math.round(sub_ms * 0.10)
+            w05 = math.round(sub_ms * 0.05)
+            bx1 = box.new(piv_ms - w15, price_max, piv_ms + w15, price_min,
+                          xloc=xloc.bar_time, border_color=color.new(c, 100),
+                          bgcolor=color.new(c, 92))
+            bx2 = box.new(piv_ms - w10, price_max, piv_ms + w10, price_min,
+                          xloc=xloc.bar_time, border_color=color.new(c, 100),
+                          bgcolor=color.new(c, 85))
+            bx3 = box.new(piv_ms - w05, price_max, piv_ms + w05, price_min,
+                          xloc=xloc.bar_time, border_color=color.new(c, 100),
+                          bgcolor=color.new(c, 70))
+            array.push(bxs, bx1)
+            array.push(bxs, bx2)
+            array.push(bxs, bx3)
+        // dikey pivot çizgisi
+        if show_pivlines
+            ln = line.new(piv_ms, price_min, piv_ms, price_max,
+                           xloc=xloc.bar_time,
+                           color=color.new(c, 30), width=1, style=line.style_dotted)
+            array.push(lns, ln)
+        // yarım daire
+        if show_arcs
+            draw_arc(piv_ms, radius_ms, baseline, arc_h, c)
+        // pivot tarihi etiketi
+        if show_labels
+            lb = label.new(piv_ms, baseline + arc_h * 1.05,
+                            str.format_time(piv_ms, "yyyy-MM-dd", syminfo.timezone),
+                            xloc=xloc.bar_time,
+                            style=label.style_none,
+                            textcolor=color.new(c, 0), size=size.small)
+            array.push(lbs, lb)
+
+    // Seed A & B etiketleri
+    if show_labels
+        seed_b_ms = seed_a_ms + parent_ms
+        lb_a = label.new(seed_a_ms, price_min, "A (seed)",
+                          xloc=xloc.bar_time,
+                          style=label.style_label_up, color=c,
+                          textcolor=color.white, size=size.small)
+        lb_b = label.new(seed_b_ms, price_min, "B (seed)",
+                          xloc=xloc.bar_time,
+                          style=label.style_label_up, color=c,
+                          textcolor=color.white, size=size.small)
+        array.push(lbs, lb_a)
+        array.push(lbs, lb_b)
+
+    // Üst-orta özet etiketi
+    if draw_label_top
+        info = str.format("⏱ Sub={0}  Alt≈{1,number,#}g  Hit={2,number,#.0}%  ({3}/{4})  Tol±{5}g",
+                            sub, sub_days, hit_rate * 100, hits, total,
+                            math.round(sub_ms * tp / 86400000.0))
+        lb3 = label.new(chart_start_ms + (chart_end_ms - chart_start_ms) / 2,
+                         price_max, info, xloc=xloc.bar_time,
+                         style=label.style_label_down, color=c,
+                         textcolor=color.white, size=size.normal)
+        array.push(lbs, lb3)
+
+// ============ ANA: SON BAR'DA HESAPLA & ÇİZ ============
+
+if barstate.islast
+    clear_all()
+
+    if seed_b_t <= seed_a_t
+        lb = label.new(bar_index, high, "⚠ Seed B > Seed A olmalı",
+                        color=color.red, textcolor=color.white, style=label.style_label_left)
+        array.push(lbs, lb)
+    else
+        parent_ms = seed_b_t - seed_a_t
+        chart_start_ms = time[bar_index]
+        chart_end_ms   = time
+        price_max = chart_high
+        price_min = chart_low
+
+        // Skor: hangi subdivision en iyi?
+        cand = auto_sub ? parse_candidates(candidates_str) : array.from(manual_sub)
+        if array.size(cand) == 0
+            array.push(cand, manual_sub)
+
+        best_sub   = array.get(cand, 0)
+        best_hits  = 0
+        best_total = 0
+        sec_sub    = -1
+        sec_hits   = 0
+        sec_total  = 0
+
+        for s in cand
+            [h, t_, _sub_ms] = score_subdivision(s, seed_a_t, parent_ms,
+                                                  chart_start_ms, chart_end_ms,
+                                                  piv_t, tol_pct)
+            hr = t_ > 0 ? h / t_ : 0.0
+            best_hr = best_total > 0 ? best_hits / best_total : 0.0
+            if hr > best_hr or (hr == best_hr and t_ > best_total)
+                sec_sub := best_sub
+                sec_hits := best_hits
+                sec_total := best_total
+                best_sub := s
+                best_hits := h
+                best_total := t_
+            else
+                sec_hr = sec_total > 0 ? sec_hits / sec_total : 0.0
+                if hr > sec_hr
+                    sec_sub := s
+                    sec_hits := h
+                    sec_total := t_
+
+        // Çiz: en iyi
+        draw_cycle(seed_a_t, parent_ms, best_sub,
+                    chart_start_ms, chart_end_ms,
+                    col_main, tol_pct, best_hits, best_total,
+                    price_max, price_min, true)
+        // Çiz: 2. en iyi (varsa)
+        if show_second and sec_sub > 0
+            draw_cycle(seed_a_t, parent_ms, sec_sub,
+                        chart_start_ms, chart_end_ms,
+                        col_alt, tol_pct, sec_hits, sec_total,
+                        price_max, price_min, false)
+
+    // Pivot işaretleri
+    if show_pivots
+        for i = 0 to array.size(piv_t) - 1
+            pm = label.new(array.get(piv_t, i), array.get(piv_p, i),
+                            "▼", xloc=xloc.bar_time,
+                            style=label.style_none,
+                            textcolor=color.new(color.gray, 0), size=size.tiny)
+            array.push(pmks, pm)
