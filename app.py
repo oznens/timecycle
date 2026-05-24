@@ -22,20 +22,40 @@ with st.sidebar:
     st.header("Veri")
     provider = st.selectbox(
         "Veri kaynağı",
-        ["yfinance", "bybit", "binance", "kraken", "coinbase"],
+        ["bybit", "binance", "yfinance", "kraken", "coinbase"],
         index=0,
-        help="Bu cloud ortamında sadece yfinance/kraken/coinbase çalışır; "
-             "Bybit/Binance lokalde kullanılır.",
+        help="Lokalde Bybit/Binance açık; Anthropic cloud container'da CloudFront "
+             "geo-blok nedeniyle kapalı (yfinance/kraken/coinbase kullan).",
     )
-    default_symbol = "BTC/USDT" if provider in {"bybit", "binance"} else "BTC-USD"
-    symbol = st.text_input("Sembol", value=default_symbol)
-    period = st.selectbox("Periyot", ["2y", "5y", "10y", "max"], index=2)
-    interval = st.selectbox("Mum aralığı", ["1d", "1wk", "1mo"], index=0)
+    default_symbol = "BTC/USDT" if provider in {"bybit", "binance", "kraken", "coinbase"} else "BTC-USD"
+    symbol = st.text_input(
+        "Sembol", value=default_symbol,
+        help="Bybit/Binance: 'BTC/USDT' · yfinance: 'BTC-USD' formatı",
+    )
+    interval = st.selectbox(
+        "Mum aralığı (TF)",
+        ["15m", "30m", "1h", "2h", "4h", "12h", "1d", "1wk", "1mo"],
+        index=6,
+    )
+    period_opts = (
+        ["1mo_p", "3mo", "6mo"] if interval in {"15m", "30m"}
+        else ["3mo", "6mo", "1y", "2y"] if interval in {"1h", "2h"}
+        else ["6mo", "1y", "2y", "5y"] if interval == "4h"
+        else ["1y", "2y", "5y", "10y", "max"]
+    )
+    period = st.selectbox("Geçmiş periyot", period_opts,
+                          index=min(2, len(period_opts) - 1))
 
     st.header("Pivot tespiti")
-    min_sep = st.slider("Min dip aralığı (bar)", 5, 90, 25,
+    # TF'ye göre akıllı default
+    tf_defaults = {
+        "15m": (24, 3), "30m": (24, 3), "1h": (24, 3), "2h": (24, 4),
+        "4h": (30, 5), "12h": (30, 5), "1d": (25, 5), "1wk": (8, 5), "1mo": (4, 8),
+    }
+    d_sep, d_prom = tf_defaults.get(interval, (25, 5))
+    min_sep = st.slider("Min dip aralığı (bar)", 3, 120, d_sep,
                         help="Daha büyük = daha az gürültü")
-    prom_pct = st.slider("Belirginlik (%)", 1, 20, 5) / 100.0
+    prom_pct = st.slider("Belirginlik (%)", 1, 25, d_prom) / 100.0
 
     st.header("Döngü")
     auto_seed = st.checkbox("Otomatik en güçlü 2 dipten döngü kur", True)
