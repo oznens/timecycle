@@ -1,7 +1,4 @@
-streamlit>=1.30
-plotly>=5.18
-pandas>=2.0
-numpy>=1.24
+freqtrade>=2026.4
 scipy>=1.11
-yfinance>=0.2.40
-ccxt>=4.2
+# Following are pulled by freqtrade as deps but listed for clarity:
+# numpy, pandas, talib, ccxt, technical, scikit-learn

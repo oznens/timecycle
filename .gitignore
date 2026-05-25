@@ -1,9 +1,30 @@
-kaynak/text/
-kaynak/images/
+# Python
 __pycache__/
 *.pyc
+*.pyo
 .venv/
-node_modules/
+venv/
+.python-version
+
+# Freqtrade
+user_data/logs/
+user_data/data/
+user_data/backtest_results/
+user_data/hyperopt_results/
+user_data/notebooks/
+user_data/plot/
+user_data/tradesv3.sqlite*
+
+# Secrets
 .env
-smoke_test.html
-chart_*.png
+user_data/config_secret.json
+user_data/config_live.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
