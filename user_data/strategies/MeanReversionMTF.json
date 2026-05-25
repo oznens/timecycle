@@ -1,0 +1,34 @@
+{
+  "strategy_name": "MeanReversionMTF",
+  "params": {
+    "trailing": {
+      "trailing_stop": true,
+      "trailing_stop_positive": 0.008,
+      "trailing_stop_positive_offset": 0.02,
+      "trailing_only_offset_is_reached": true
+    },
+    "max_open_trades": {
+      "max_open_trades": 8
+    },
+    "buy": {
+      "atr_min_pct": 0.003,
+      "bb_period": 26,
+      "rsi_long_max": 19,
+      "vol_ratio_min": 1.22
+    },
+    "sell": {
+      "rsi_short_min": 68
+    },
+    "roi": {
+      "0": 0.096,
+      "33": 0.034,
+      "73": 0.01,
+      "97": 0
+    },
+    "stoploss": {
+      "stoploss": -0.309
+    }
+  },
+  "ft_stratparam_v": 1,
+  "export_time": "2026-05-25 13:20:16.507296+00:00"
+}
