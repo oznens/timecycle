@@ -151,13 +151,56 @@ bu trade'de tetiklenmedi.
 ✅ **166 trade = istatistik güvenilir**
 ✅ **3.58% drawdown = düşük risk**
 
-## 8. Sıradakiler
+## 8. Walk-forward OOS — STRATEJİ GERÇEK ✅
 
-1. **Custom stoploss** ekle: hard -%5 (tek trade portfolio kaybını sınırla)
-2. **Walk-forward validation**: 1. yarısı train / 2. yarısı test
-3. **Diğer 3 strateji** (TC, SB, OF) için aynı pipeline
-4. **2 hafta paper trade** (dry_run=true)
-5. **Bybit küçük sermaye** ($50-100) ile canlı pilot
+Train: 2026-03-01 → 04-15 (45g, 15p) · Test: 04-15 → 05-25 (40g, 98p, hiç görmediği)
+
+OOS sonuç:
+| Trades | Win% | Toplam | DD | Sharpe |
+|---|---|---|---|---|
+| 657 | 68.6% | **+13.49%** | 2.46% | 23.10 |
+
+In-sample (653 trade, 74% win, +30.89%) ile çok tutarlı → overfit yok.
+Yeni hyperopt SL'i -%8.1 (eski -%31.9) — gap koruyucu.
+
+## 9. Diğer 3 strateji — 98p test
+
+| Strateji | Trades | Win% | Toplam | DD |
+|---|---|---|---|---|
+| 🥇 SqueezeBreakout | 653 | 74.0% | **+30.89%** | 3.23% |
+| 🥈 TrendContinuation | 213 | 66.2% | +6.47% | 3.05% |
+| 🥉 MeanReversionMTF | 166 | 81.3% | +5.54% | 3.58% |
+| ❌ OrderFlowProxy | 18 | 72.2% | -0.75% | 1.39% |
+
+## 10. ⚠️ Paper Trade GERÇEKLİĞİ
+
+SB'yi OKX dry_run'da canlı çalıştırdık. **Backtest sonuçları canlıya transfer
+OLMADI** — 64 dakikada 0 trade (backtest oranıyla 5-12 bekleniyordu).
+
+Olası nedenler:
+1. **Live mode fill modelleme farklı**: backtest limit emirleri %100 fill olur
+   varsayar, canlıda fiyat kaçabilir
+2. **Sub-bar timing**: backtest 5m bar kapanışında "kesin tetik" — live'da
+   bar kapanıştan saniyeler sonra REST polling
+3. **Hyperopt'un seçtiği params** (vol_ratio>1.55, ATR>0.78%) **canlı koşullarda
+   nadiren tetikleniyor** (in-sample dönemine özgü)
+4. **Sadece 2 saatlik gözlem** — istatistiksel olarak hâlâ küçük örneklem
+
+Yapılması gereken:
+- En az **7-14 gün paper trade** ile gerçek davranış kıyaslaması
+- Live fill simülasyonu için backtest'te `entry_pricing.price_side="other"`
+  (taker pricing) ile yeniden hyperopt
+- Filtreleri gevşet (vol_ratio 1.55→1.2, ATR 0.78%→0.4%) — fill oranı artar
+
+## 11. Genel Dersler
+
+1. **Hyperopt asla %100 yeterli değil** — out-of-sample test geçse bile live
+   farklı olabilir
+2. **Paper trade ŞART** — backtest sonuçları "best case" senaryosu
+3. **Fill realism kritik** — limit emir hızlı fiyat hareketinde fill olmuyor
+4. **Az trade = az veri**, dolayısıyla sapma + variance yüksek
+5. **Stratejiyi market koşuluna göre adapte etmek**: bull/bear/range farklı
+   davranış
 
 ## 6. Yapılacaklar
 
