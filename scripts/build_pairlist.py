@@ -75,16 +75,45 @@ def _bybit_perps() -> set[str]:
         return set()
 
 
-def build(n: int = 100) -> list[str]:
-    """Top n adet işlem yapılabilir USDT-perp pair listesi: ['BTC/USDT:USDT', ...]."""
-    coins = _coingecko_top(limit=n * 2)  # filtreleme sonrası n kalmasın diye geniş çek
-    bybit_set = _bybit_perps()  # cloud'da boş set döner — fallback'te kullanmıyoruz
+def _okx_perps() -> set[str]:
+    """OKX canlı USDT linear swap (perp) sembol set'i."""
+    try:
+        req = urllib.request.Request(
+            "https://www.okx.com/api/v5/public/instruments?instType=SWAP",
+            headers={"User-Agent": "Mozilla/5.0"},
+        )
+        with urllib.request.urlopen(req, timeout=15) as r:
+            data = json.loads(r.read())
+        out = set()
+        for item in data.get("data", []):
+            inst = item.get("instId", "")
+            # Format: BTC-USDT-SWAP
+            if inst.endswith("-USDT-SWAP") and item.get("state") == "live":
+                base = inst.split("-")[0]
+                out.add(base)
+        return out
+    except Exception as e:
+        print(f"[uyari] OKX instrument list cekilemedi: {e}", file=sys.stderr)
+        return set()
+
+
+def build(n: int = 100, exchange: str = "bybit") -> list[str]:
+    """
+    Top n adet işlem yapılabilir USDT-perp pair listesi: ['BTC/USDT:USDT', ...].
+    exchange='bybit' veya 'okx' — listed olmayan sembolleri filtreler.
+    """
+    coins = _coingecko_top(limit=n * 2)
+    if exchange == "okx":
+        ex_set = _okx_perps()
+    elif exchange == "bybit":
+        ex_set = _bybit_perps()
+    else:
+        ex_set = set()
 
     pairs = []
     for c in coins:
         cid = c.get("id", "")
         sym = (c.get("symbol") or "").upper()
-        # override
         if cid in SYMBOL_OVERRIDE:
             mapped = SYMBOL_OVERRIDE[cid]
             if mapped is None:
@@ -92,10 +121,9 @@ def build(n: int = 100) -> list[str]:
             sym = mapped
         if not sym or sym in SKIP:
             continue
-        # Bybit listesi varsa filtre uygula
-        if bybit_set and sym not in bybit_set:
+        if ex_set and sym not in ex_set:
             continue
-        pair = f"{sym}/USDT:USDT"  # ccxt linear perpetual format
+        pair = f"{sym}/USDT:USDT"
         if pair not in pairs:
             pairs.append(pair)
         if len(pairs) >= n:
@@ -105,12 +133,14 @@ def build(n: int = 100) -> list[str]:
 
 def main():
     n = int(os.environ.get("PAIRS_N", "100"))
-    pairs = build(n=n)
-    out_path = os.environ.get("OUT", "user_data/pairlist_top100.json")
+    exchange = os.environ.get("EXCHANGE", "bybit")
+    pairs = build(n=n, exchange=exchange)
+    suffix = "" if exchange == "bybit" else f"_{exchange}"
+    out_path = os.environ.get("OUT", f"user_data/pairlist_top{n}{suffix}.json")
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     with open(out_path, "w") as f:
         json.dump(pairs, f, indent=2)
-    print(f"OK {len(pairs)} pair → {out_path}")
+    print(f"OK {len(pairs)} pair ({exchange}) → {out_path}")
     for p in pairs[:20]:
         print(f"  {p}")
     if len(pairs) > 20:
