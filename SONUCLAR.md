@@ -56,11 +56,52 @@ Aynı hyperopt params, eklenen 7 pair (HYPE, ZEC, CC, XLM, TON, TRX, BCH):
 
 **Sonraki adım**: hyperopt'u 15+ pair üzerinde tekrar et → daha sağlam genelleştirilmiş params.
 
-## 5. Devam ediyor: 98 pair download + hyperopt 15 pair
+## 5. MR yeniden hyperopt — 15 pair (60 epoch, Sharpe loss)
 
-Şu an arka planda:
-- 98 pair tam veri indirmesi (OKX rate-limit, ~50dk total)
-- 15 pair üzerinde yeniden hyperopt (60 epoch, ~10-15dk)
+Daha geniş set ile aşırı uyumlanma riski azaltıldı.
+
+**Epoch 12/60 best:**
+
+Yeni params (`MeanReversionMTF.json`):
+- `rsi_long_max: 21` (önceki 19)
+- `bb_period: 24`
+- `vol_ratio_min: 1.19`
+- `atr_min_pct: 0.0041` (yüksek volatilite filtresi)
+- `rsi_short_min: 72`
+- ROI: 0:19.5% → 18:6.8% → 59:3.7% → 92:BE
+- SL: -23.6%
+
+Doğrulama (in-sample 15 pair):
+| Trades | Win% | Avg P | Median | Toplam | DD | Sharpe | Sortino |
+|---|---|---|---|---|---|---|---|
+| 14 | **85.7%** | **+1.30%** | **+1.69%** | +1.74% | **0.15%** | **3.64** | **20.87** |
+
+Karşılaştırma:
+|  | 8p (overfit) | 15p (yeni) |
+|---|---|---|
+| Trades | 29 | 14 |
+| Win% | 82.8 | **85.7** |
+| Avg P | +0.47 | **+1.30** |
+| DD | 0.89 | **0.15** |
+| Sharpe | 1.83 | **3.64** |
+
+Drawdown 6x, Sharpe 2x daha iyi. Daha az ama daha kaliteli trade.
+
+### Pair dağılımı (15p)
+- 🟢 **ZEC**: 7 trade, 100% win, +1.08% ← en aktif
+- 🟢 TON: 4 trade, 75% win
+- 🟢 SOL/DOGE: 1 trade her biri, 100% win
+- 🔴 BCH: 1 trade, kayıp
+- ⚪ 10 pair (BTC, ETH, LINK, XRP, BNB, ADA, HYPE, CC, XLM, TRX): **sıfır trade**
+
+**Yorum**: strateji büyük cap'lerde tetiklenmiyor (BTC/ETH range darıyor, ROI %19.5
+çok yüksek). Küçük-orta cap volatilite asset'lerde çalışıyor. **Doğru disiplinli MM
+davranışı**: sadece yüksek olasılıkta gir.
+
+## 6. Devam ediyor
+
+- 98 pair download (~18dk daha)
+- Bittikten sonra full universe backtest → strateji ölçeklenebilir mi?
 
 ## 6. Yapılacaklar
 
