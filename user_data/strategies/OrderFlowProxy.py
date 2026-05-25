@@ -25,6 +25,7 @@ import pandas as pd
 
 from freqtrade.persistence import Trade
 from freqtrade.strategy import IStrategy, DecimalParameter, IntParameter
+from freqtrade.enums import RunMode
 
 from utils import add_macd, add_rsi, add_emas, add_atr, add_volume_avg
 
@@ -115,7 +116,10 @@ class OrderFlowProxy(IStrategy):
                               rate: float, time_in_force: str,
                               current_time: datetime, entry_tag: str | None,
                               side: str, **kwargs) -> bool:
-        # backtest'te dp.orderbook çağrısı boş döner → True
+        # Backtest/hyperopt'ta canlı OB anlamsız → onayla (proxy sinyali kullanılır).
+        # Sadece dry_run/live'da gerçek OB imbalance kontrolü yap.
+        if self.dp.runmode in (RunMode.BACKTEST, RunMode.HYPEROPT):
+            return True
         try:
             ob = self.dp.orderbook(pair, maximum=self.ob_depth)
         except Exception:
