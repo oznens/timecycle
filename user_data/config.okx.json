@@ -43,7 +43,9 @@
     "key": "",
     "secret": "",
     "ccxt_config": {},
-    "ccxt_async_config": {},
+    "ccxt_async_config": {
+      "enableRateLimit": true
+    },
     "pair_whitelist": [
       "BTC/USDT:USDT",
       "ETH/USDT:USDT",
@@ -149,7 +151,8 @@
       ".*DOWN/.*",
       ".*BULL/.*",
       ".*BEAR/.*"
-    ]
+    ],
+    "enable_ws": false
   },
   "pairlists": [
     {
@@ -167,10 +170,10 @@
     "listen_port": 8080,
     "verbosity": "info",
     "enable_openapi": true,
-    "jwt_secret_key": "CHANGEME_GENERATE_WITH_SECRETS_TOKEN_HEX_32",
+    "jwt_secret_key": "4328f71d185177f0ea3f45cae084382b53e7980c456e1f6036a62bb95a8a3a68",
     "CORS_origins": [],
-    "username": "freqtrader",
-    "password": ""
+    "username": "ozan",
+    "password": "QQtFaPtHKVrUtdZGL5gkCQ"
   },
   "bot_name": "scalper_mm_v1_okx_dev",
   "initial_state": "running",
