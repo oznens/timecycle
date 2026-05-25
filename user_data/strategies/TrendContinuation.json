@@ -1,0 +1,35 @@
+{
+  "strategy_name": "TrendContinuation",
+  "params": {
+    "trailing": {
+      "trailing_stop": true,
+      "trailing_stop_positive": 0.008,
+      "trailing_stop_positive_offset": 0.02,
+      "trailing_only_offset_is_reached": true
+    },
+    "max_open_trades": {
+      "max_open_trades": 10
+    },
+    "buy": {
+      "atr_min_pct": 0.0077,
+      "ema_fast": 21,
+      "ema_slow": 67,
+      "rsi_long_hi": 74,
+      "rsi_long_lo": 41,
+      "rsi_short_hi": 53,
+      "rsi_short_lo": 39,
+      "vol_ratio_min": 2.41
+    },
+    "roi": {
+      "0": 0.165,
+      "40": 0.066,
+      "74": 0.032,
+      "124": 0
+    },
+    "stoploss": {
+      "stoploss": -0.217
+    }
+  },
+  "ft_stratparam_v": 1,
+  "export_time": "2026-05-25 14:01:25.942451+00:00"
+}

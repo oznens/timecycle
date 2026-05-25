@@ -1,0 +1,31 @@
+{
+  "strategy_name": "OrderFlowProxy",
+  "params": {
+    "trailing": {
+      "trailing_stop": true,
+      "trailing_stop_positive": 0.006,
+      "trailing_stop_positive_offset": 0.015,
+      "trailing_only_offset_is_reached": true
+    },
+    "max_open_trades": {
+      "max_open_trades": 10
+    },
+    "buy": {
+      "atr_min_pct": 0.0033,
+      "pressure_bars": 4,
+      "pressure_window": 4,
+      "vol_mult": 1.5
+    },
+    "roi": {
+      "0": 0.052,
+      "28": 0.04,
+      "51": 0.01,
+      "142": 0
+    },
+    "stoploss": {
+      "stoploss": -0.231
+    }
+  },
+  "ft_stratparam_v": 1,
+  "export_time": "2026-05-25 14:06:33.434713+00:00"
+}
