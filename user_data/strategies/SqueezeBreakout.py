@@ -28,21 +28,27 @@ class SqueezeBreakout(IStrategy):
 
     # Squeeze breakout volatile → daha geniş ROI, tighter stop
     minimal_roi = {
-        "0":  0.020,
-        "10": 0.010,
-        "30": 0.005,
-        "60": 0.0,
+        "0":  0.040,
+        "20": 0.020,
+        "60": 0.008,
+        "120": 0.0,
     }
-    stoploss = -0.015        # squeeze yanlış yönlü gelirse hızlı çık
+    stoploss = -0.020       # squeeze yanlış yönlü gelirse hızlı çık
     trailing_stop = True
-    trailing_stop_positive = 0.008
-    trailing_stop_positive_offset = 0.015
+    trailing_stop_positive = 0.010
+    trailing_stop_positive_offset = 0.020
     trailing_only_offset_is_reached = True
 
-    vol_ratio_min = DecimalParameter(1.0, 3.0, default=1.5, decimals=2, space="buy")
-    kc_mult       = DecimalParameter(1.0, 2.0, default=1.5, decimals=2, space="buy")
+    order_types = {
+        "entry": "limit", "exit": "limit", "stoploss": "limit",
+        "stoploss_on_exchange": False, "emergency_exit": "market",
+    }
 
-    startup_candle_count = 200
+    vol_ratio_min = DecimalParameter(1.2, 3.0, default=1.7, decimals=2, space="buy")
+    kc_mult       = DecimalParameter(1.0, 2.0, default=1.5, decimals=2, space="buy")
+    atr_min_pct   = DecimalParameter(0.002, 0.008, default=0.003, decimals=4, space="buy")
+
+    startup_candle_count = 250
 
     def populate_indicators(self, dataframe: pd.DataFrame, metadata: dict) -> pd.DataFrame:
         df = dataframe.copy()
@@ -52,6 +58,9 @@ class SqueezeBreakout(IStrategy):
         df = add_macd(df, fast=12, slow=26, signal=9)
         df = add_atr(df, period=14)
         df = add_volume_avg(df, period=20)
+        # HTF EMA200 trend filter
+        df["ema200"] = df["close"].ewm(span=200, adjust=False).mean()
+        df["above_ema200"] = df["close"] > df["ema200"]
         return df
 
     def populate_entry_trend(self, dataframe: pd.DataFrame, metadata: dict) -> pd.DataFrame:
@@ -64,7 +73,9 @@ class SqueezeBreakout(IStrategy):
             breakout
             & (df["squeeze_mom"] > 0)
             & (df["close"] > df["bb_middle"])
+            & df["above_ema200"]                                # HTF trend bullish
             & (df["vol_ratio"] > float(self.vol_ratio_min.value))
+            & (df["atr_pct"] > float(self.atr_min_pct.value))
             & (df["macd"] > df["macdsignal"])
             & (df["volume"] > 0)
         )
@@ -72,7 +83,9 @@ class SqueezeBreakout(IStrategy):
             breakout
             & (df["squeeze_mom"] < 0)
             & (df["close"] < df["bb_middle"])
+            & (~df["above_ema200"])                              # HTF trend bearish
             & (df["vol_ratio"] > float(self.vol_ratio_min.value))
+            & (df["atr_pct"] > float(self.atr_min_pct.value))
             & (df["macd"] < df["macdsignal"])
             & (df["volume"] > 0)
         )

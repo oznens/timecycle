@@ -40,26 +40,32 @@ class OrderFlowProxy(IStrategy):
     process_only_new_candles = True
 
     minimal_roi = {
-        "0":  0.010,
-        "10": 0.006,
-        "25": 0.003,
-        "60": 0.0,
+        "0":  0.020,
+        "20": 0.010,
+        "60": 0.005,
+        "120": 0.0,
     }
-    stoploss = -0.012
+    stoploss = -0.018
     trailing_stop = True
-    trailing_stop_positive = 0.004
-    trailing_stop_positive_offset = 0.010
+    trailing_stop_positive = 0.006
+    trailing_stop_positive_offset = 0.015
     trailing_only_offset_is_reached = True
 
-    # Backtest proxy parametreleri
-    vol_mult       = DecimalParameter(1.0, 2.5, default=1.2, decimals=2, space="buy")
-    pressure_bars  = IntParameter(2, 5, default=2, space="buy")
-    pressure_window= IntParameter(2, 6, default=3, space="buy")
+    order_types = {
+        "entry": "limit", "exit": "limit", "stoploss": "limit",
+        "stoploss_on_exchange": False, "emergency_exit": "market",
+    }
+
+    # Backtest proxy parametreleri — sıkı
+    vol_mult       = DecimalParameter(1.2, 3.0, default=1.6, decimals=2, space="buy")
+    pressure_bars  = IntParameter(2, 5, default=3, space="buy")
+    pressure_window= IntParameter(3, 7, default=4, space="buy")
+    atr_min_pct    = DecimalParameter(0.002, 0.008, default=0.003, decimals=4, space="buy")
     # Live OB imbalance eşiği
     ob_imbalance_ratio = 1.5
     ob_depth = 5
 
-    startup_candle_count = 100
+    startup_candle_count = 250
 
     def populate_indicators(self, dataframe: pd.DataFrame, metadata: dict) -> pd.DataFrame:
         df = dataframe.copy()
@@ -72,12 +78,16 @@ class OrderFlowProxy(IStrategy):
         # Body pozisyonu: candle hacminin alıcı vs satıcıya dağılımı tahmini
         body_pos = (df["close"] - df["low"]) / (df["high"] - df["low"]).replace(0, np.nan)
         df["body_pos"] = body_pos.fillna(0.5)
-        df["buying_bar"]  = (df["body_pos"] > 0.6) & (df["vol_ratio"] > float(self.vol_mult.value))
-        df["selling_bar"] = (df["body_pos"] < 0.4) & (df["vol_ratio"] > float(self.vol_mult.value))
+        df["buying_bar"]  = (df["body_pos"] > 0.65) & (df["vol_ratio"] > float(self.vol_mult.value))
+        df["selling_bar"] = (df["body_pos"] < 0.35) & (df["vol_ratio"] > float(self.vol_mult.value))
 
         win = int(self.pressure_window.value)
         df["buy_pressure"]  = df["buying_bar"].rolling(win).sum()
         df["sell_pressure"] = df["selling_bar"].rolling(win).sum()
+
+        # HTF EMA200 trend filter
+        df["ema200"] = df["close"].ewm(span=200, adjust=False).mean()
+        df["above_ema200"] = df["close"] > df["ema200"]
         return df
 
     def populate_entry_trend(self, dataframe: pd.DataFrame, metadata: dict) -> pd.DataFrame:
@@ -85,16 +95,20 @@ class OrderFlowProxy(IStrategy):
         pmin = int(self.pressure_bars.value)
         long_cond = (
             (df["buy_pressure"] >= pmin)
+            & df["above_ema200"]                              # HTF trend onayı
             & (df["rsi"] > 40) & (df["rsi"] < 65)
             & (df["macd"] > df["macdsignal"])
             & (df["close"] > df["ema20"])
+            & (df["atr_pct"] > float(self.atr_min_pct.value))
             & (df["volume"] > 0)
         )
         short_cond = (
             (df["sell_pressure"] >= pmin)
+            & (~df["above_ema200"])                            # HTF trend onayı
             & (df["rsi"] > 35) & (df["rsi"] < 60)
             & (df["macd"] < df["macdsignal"])
             & (df["close"] < df["ema20"])
+            & (df["atr_pct"] > float(self.atr_min_pct.value))
             & (df["volume"] > 0)
         )
         df.loc[long_cond,  ["enter_long",  "enter_tag"]] = (1, "ofproxy_buy_pressure")

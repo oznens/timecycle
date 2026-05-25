@@ -23,26 +23,32 @@ class TrendContinuation(IStrategy):
     process_only_new_candles = True
 
     minimal_roi = {
-        "0":  0.015,
-        "20": 0.008,
-        "45": 0.003,
-        "90": 0.0,
+        "0":  0.030,
+        "30": 0.015,
+        "90": 0.005,
+        "180": 0.0,
     }
-    stoploss = -0.020
+    stoploss = -0.025
     trailing_stop = True
-    trailing_stop_positive = 0.006
-    trailing_stop_positive_offset = 0.015
+    trailing_stop_positive = 0.008
+    trailing_stop_positive_offset = 0.020
     trailing_only_offset_is_reached = True
 
-    rsi_long_lo  = IntParameter(35, 50, default=40, space="buy")
-    rsi_long_hi  = IntParameter(60, 80, default=70, space="buy")
-    rsi_short_lo = IntParameter(20, 40, default=30, space="buy")
-    rsi_short_hi = IntParameter(50, 65, default=60, space="buy")
-    vol_ratio_min = DecimalParameter(0.7, 2.0, default=1.0, decimals=2, space="buy")
+    order_types = {
+        "entry": "limit", "exit": "limit", "stoploss": "limit",
+        "stoploss_on_exchange": False, "emergency_exit": "market",
+    }
+
+    rsi_long_lo  = IntParameter(35, 55, default=45, space="buy")
+    rsi_long_hi  = IntParameter(60, 75, default=68, space="buy")
+    rsi_short_lo = IntParameter(25, 40, default=32, space="buy")
+    rsi_short_hi = IntParameter(45, 65, default=55, space="buy")
+    vol_ratio_min = DecimalParameter(1.0, 2.5, default=1.3, decimals=2, space="buy")
+    atr_min_pct   = DecimalParameter(0.002, 0.008, default=0.003, decimals=4, space="buy")
     ema_fast      = IntParameter(10, 25, default=20, space="buy")
     ema_slow      = IntParameter(40, 100, default=50, space="buy")
 
-    startup_candle_count = 200
+    startup_candle_count = 250
 
     def populate_indicators(self, dataframe: pd.DataFrame, metadata: dict) -> pd.DataFrame:
         df = dataframe.copy()
@@ -59,6 +65,10 @@ class TrendContinuation(IStrategy):
         df["macd_bull_cross"] = (df["macd"] > df["macdsignal"]) & (df["macd"].shift(1) <= df["macdsignal"].shift(1))
         df["macd_bear_cross"] = (df["macd"] < df["macdsignal"]) & (df["macd"].shift(1) >= df["macdsignal"].shift(1))
         df["atr_rising"] = df["atr"] > df["atr"].shift(3)
+
+        # HTF EMA200 trend filter
+        df["ema200"] = df["close"].ewm(span=200, adjust=False).mean()
+        df["above_ema200"] = df["close"] > df["ema200"]
         return df
 
     def populate_entry_trend(self, dataframe: pd.DataFrame, metadata: dict) -> pd.DataFrame:
@@ -66,18 +76,22 @@ class TrendContinuation(IStrategy):
         long_cond = (
             df["macd_bull_cross"]
             & df["ema_stack_bull"]
+            & df["above_ema200"]                              # HTF trend onayı
             & (df["rsi"] > self.rsi_long_lo.value)
             & (df["rsi"] < self.rsi_long_hi.value)
             & (df["vol_ratio"] > float(self.vol_ratio_min.value))
+            & (df["atr_pct"] > float(self.atr_min_pct.value))
             & df["atr_rising"]
             & (df["volume"] > 0)
         )
         short_cond = (
             df["macd_bear_cross"]
             & df["ema_stack_bear"]
+            & (~df["above_ema200"])                            # HTF trend onayı
             & (df["rsi"] > self.rsi_short_lo.value)
             & (df["rsi"] < self.rsi_short_hi.value)
             & (df["vol_ratio"] > float(self.vol_ratio_min.value))
+            & (df["atr_pct"] > float(self.atr_min_pct.value))
             & df["atr_rising"]
             & (df["volume"] > 0)
         )
